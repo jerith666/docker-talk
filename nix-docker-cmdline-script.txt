@@ -1,0 +1,162 @@
+# cmd line script
+
+#
+# -- the netcat server, inside and outside of docker
+#
+
+# create the nc static binary
+cat netcat-static.nix
+nix-build netcat-static.nix -o netcat-static; cp -v netcat-static-nc/bin/nc nc
+file nc
+
+# demonstrate the simple server outside docker:
+./nc -l 4321
+telnet localhost 4321
+
+# demonstrate building a container with the simple server in it:
+# note the 'FROM scratch'
+# TODO consider additional layers & cat'ing a file into 'nc -N'
+cat Dockerfile
+docker build --progress plain .
+
+docker run --interactive --tty --rm --publish 1234:1234 ( docker build --quiet . )
+telnet localhost 1234
+
+#
+# -- the docker container as an OS process
+#
+
+# demonstrate that the running "container" is merely a process
+docker run --interactive --tty --rm --publish 1234:1234 ( docker build --quiet . )
+docker ps
+ps aux -w -w | grep root | grep /nc
+
+# show what's special about the container process
+su -l
+cd /proc/<pid>
+ls -alF
+
+# show that it has its own root filesystem
+grep ' / ' mounts
+ls -alF /
+ls -alF root/
+# and that root filesystem restricts what executables it can see
+nsenter -t $(basename $(pwd)) --mount ls /
+
+# show that it has its own networking (but tied to the host via the 172.17.0.0/16 subnet)
+ip address
+nsenter -t $(basename $(pwd)) --net ip address
+ip route
+nsenter -t $(basename $(pwd)) --net ip route
+
+# show that it has its own hostname
+hostname
+nsenter -t $(basename $(pwd)) --uts hostname
+
+#
+# -- a deeper look into the container filesystem, and what an image is
+#
+
+grep ' / ' mounts
+# discuss overlay mounts
+docker image inspect ( docker build --quiet . )
+
+grep ' / ' mounts | cut -d ' ' -f 4 | cut -d , -f 3 | cut -d = -f 2 | tr : '\n' | while read layer; do echo; echo; echo $layer is a symlink:; ls -alF $layer; echo; echo inside the ${layer}/ symlink is:; ls -alF ${layer}/; done
+
+# export the image
+docker image save ( docker build --quiet . ) -o saved-image
+file saved-image
+
+# look inside it
+mkdir tmp
+cd tmp
+tar xvf ../saved-image
+
+# the older docker manifest
+cat manifest.json | jq
+
+# show the config
+cat ( cat manifest.json | jq '.[0].Config' -r ) | jq
+
+# show the layer
+file ( cat manifest.json | jq '.[0].Layers[0]' -r )
+tar tvf ( cat manifest.json | jq '.[0].Layers[0]' -r )
+
+# the newer OCI index compared to the old docker manifest:
+cat index.json | jq
+cat blobs/sha256/(cat index.json | jq '.manifests[0].digest | split (":") | .[1]' -r) | jq
+# both reference the same config and layers
+
+#
+# -- using nix to make an image
+#
+
+cat image.nix
+nix-build image.nix
+file result
+tar tzvf result
+
+# look inside the nix-created image
+mkdir nix-tmp
+cd nix-tmp
+tar xzvf ../result
+
+# there is only an older docker manifest
+cat manifest.json | jq
+
+# show the config
+cat ( cat manifest.json | jq '.[0].Config' -r ) | jq
+
+# show the layer
+file ( cat manifest.json | jq '.[0].Layers[0]' -r )
+tar tvf ( cat manifest.json | jq '.[0].Layers[0]' -r )
+
+# nix has a second, basically empty, layer
+file ( cat manifest.json | jq '.[0].Layers[1]' -r )
+tar tvf ( cat manifest.json | jq '.[0].Layers[1]' -r )
+
+#
+# -- load the nix-built image into docker and run it
+#
+
+cd ..
+gunzip -c result | docker load
+
+docker image inspect <that-id>
+
+docker run --interactive --tty --rm --publish 1234:1234 <that-id>
+telnet localhost 1234
+
+# inspect the running container a bit
+docker run --interactive --tty --rm --publish 1234:1234 <that-id>
+
+# the filesystem as seen by the container process
+ps aux -w -w | grep root | grep /nc
+su -l
+cd /proc/<pid>
+ls -alF
+ls -alF root/
+tree root/nix/
+
+# the mounted layers
+grep ' / ' mounts | cut -d ' ' -f 4 | cut -d , -f 3 | cut -d = -f 2 | tr : '\n' | while read layer; do echo; echo; echo $layer is a symlink:; ls -alF $layer; echo; echo inside the ${layer}/ symlink is:; ls -alF ${layer}/; done
+
+
+# discuss Kaniko and Jenkins's constrained runtime environment
+# to motivate use of nix rather than Kaniko
+
+# show and discuss:
+# runtime/services/services-webapps/docker/image.nix
+
+
+# ECR image sizes and scan results
+# kaniko-built via Dockerfile
+open 10.22.0/apt-10.22.0.table | split row "\n" | split column --regex "[[:space:]]+" | get column0 | uniq | sort
+# nix-built:
+open 12.0.10/apt-12.0.10.table | split row "\n" | split column --regex "[[:space:]]+" | get column0 | uniq | sort
+
+# layers in a ctp nix-docker image
+./build-nix-service -s deep-ping -v versionless --image
+./create-image | docker load
+# https://github.com/docker/docs/issues/8230#issuecomment-475278273
+
