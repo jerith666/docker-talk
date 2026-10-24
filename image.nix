@@ -10,9 +10,9 @@ nixpkgs.dockerTools.buildLayeredImage {
   name = "static-netcat-demo";
   config = {
     Entrypoint = [
-      "${nixpkgs.pkgsStatic.bash}/bin/sh"
-      "-c"
-      "${nixpkgs.pkgsStatic.netcat}/bin/nc -N -l 1234 < ${message-of-the-day}"
+      "${nixpkgs.pkgsStatic.socat}/bin/socat"
+      "TCP-LISTEN:1234"
+      "OPEN:${message-of-the-day}"
     ];
   };
 }
