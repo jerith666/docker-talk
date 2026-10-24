@@ -1,0 +1,7 @@
+
+Greetings from Pittsburgh TechFest's official netcat server!
+
+Sorry, this is all that our humble service can do right now.
+
+Check back later for something fancier.
+

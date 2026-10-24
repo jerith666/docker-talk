@@ -3,3 +3,7 @@ nc
 saved-image
 tmp
 nix-tmp
+sh
+sh-static
+*~
+result
