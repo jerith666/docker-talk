@@ -1,5 +1,5 @@
 
-Greetings from Pittsburgh TechFest's official netcat server!
+Greetings from Pittsburgh TechFest's official socat server!
 
 Sorry, this is all that our humble service can do right now.
 
