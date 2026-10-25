@@ -1,35 +1,34 @@
 # cmd line script
 
 #
-# -- the netcat server, inside and outside of docker
+# -- the socat server, inside and outside of docker
 #
 
-# create the nc static binary
-cat netcat-static.nix
-nix-build netcat-static.nix -o netcat-static; cp -v netcat-static-nc/bin/nc nc
-file nc
+# create the socat static binary
+pygmentize socat-static.nix
+nix-build socat-static.nix -o socat-static; cp -v socat-static/bin/socat socat
+file socat
 
 # demonstrate the simple server outside docker:
-./nc -l 4321
-telnet localhost 4321
+./socat TCP-LISTEN:1234 OPEN:message-of-the-day.txt
+telnet 127.0.0.1 1234
 
 # demonstrate building a container with the simple server in it:
 # note the 'FROM scratch'
-# TODO consider additional layers & cat'ing a file into 'nc -N'
-cat Dockerfile
+pygmentize Dockerfile
 docker build --progress plain .
 
-docker run --interactive --tty --rm --publish 1234:1234 ( docker build --quiet . )
-telnet localhost 1234
+docker run --interactive --tty --rm --publish 1234:1234 $( docker build --quiet . )
+telnet 127.0.0.1 1234
 
 #
 # -- the docker container as an OS process
 #
 
 # demonstrate that the running "container" is merely a process
-docker run --interactive --tty --rm --publish 1234:1234 ( docker build --quiet . )
+docker run --interactive --tty --rm --publish 1234:1234 $( docker build --quiet . )
 docker ps
-ps aux -w -w | grep root | grep /nc
+ps aux -w -w | grep /socat
 
 # show what's special about the container process
 su -l
@@ -59,12 +58,12 @@ nsenter -t $(basename $(pwd)) --uts hostname
 
 grep ' / ' mounts
 # discuss overlay mounts
-docker image inspect ( docker build --quiet . )
+docker image inspect $( docker build --quiet . )
 
 grep ' / ' mounts | cut -d ' ' -f 4 | cut -d , -f 3 | cut -d = -f 2 | tr : '\n' | while read layer; do echo; echo; echo $layer is a symlink:; ls -alF $layer; echo; echo inside the ${layer}/ symlink is:; ls -alF ${layer}/; done
 
 # export the image
-docker image save ( docker build --quiet . ) -o saved-image
+docker image save $( docker build --quiet . ) -o saved-image
 file saved-image
 
 # look inside it
@@ -76,22 +75,26 @@ tar xvf ../saved-image
 cat manifest.json | jq
 
 # show the config
-cat ( cat manifest.json | jq '.[0].Config' -r ) | jq
+cat $( cat manifest.json | jq '.[0].Config' -r ) | jq
 
-# show the layer
-file ( cat manifest.json | jq '.[0].Layers[0]' -r )
-tar tvf ( cat manifest.json | jq '.[0].Layers[0]' -r )
+# show the layer containing 'socat'
+file $( cat manifest.json | jq '.[0].Layers[0]' -r )
+tar tvf $( cat manifest.json | jq '.[0].Layers[0]' -r )
+
+# show the layer containing message-of-the-day.txt
+file $( cat manifest.json | jq '.[0].Layers[1]' -r )
+tar tvf $( cat manifest.json | jq '.[0].Layers[1]' -r )
 
 # the newer OCI index compared to the old docker manifest:
 cat index.json | jq
-cat blobs/sha256/(cat index.json | jq '.manifests[0].digest | split (":") | .[1]' -r) | jq
+cat blobs/sha256/$(cat index.json | jq '.manifests[0].digest | split (":") | .[1]' -r) | jq
 # both reference the same config and layers
 
 #
 # -- using nix to make an image
 #
 
-cat image.nix
+pygmentize image.nix
 nix-build image.nix
 file result
 tar tzvf result
@@ -105,33 +108,33 @@ tar xzvf ../result
 cat manifest.json | jq
 
 # show the config
-cat ( cat manifest.json | jq '.[0].Config' -r ) | jq
+cat $( cat manifest.json | jq '.[0].Config' -r ) | jq
 
 # show the layer
-file ( cat manifest.json | jq '.[0].Layers[0]' -r )
-tar tvf ( cat manifest.json | jq '.[0].Layers[0]' -r )
+file $( cat manifest.json | jq '.[0].Layers[0]' -r )
+tar tvf $( cat manifest.json | jq '.[0].Layers[0]' -r )
 
 # nix has a second, basically empty, layer
-file ( cat manifest.json | jq '.[0].Layers[1]' -r )
-tar tvf ( cat manifest.json | jq '.[0].Layers[1]' -r )
+file $( cat manifest.json | jq '.[0].Layers[1]' -r )
+tar tvf $( cat manifest.json | jq '.[0].Layers[1]' -r )
 
 #
 # -- load the nix-built image into docker and run it
 #
 
 cd ..
-gunzip -c result | docker load
+docker load < result
 
-docker image inspect <that-id>
+docker image inspect <that-id> | jq
 
 docker run --interactive --tty --rm --publish 1234:1234 <that-id>
-telnet localhost 1234
+telnet 127.0.0.1 1234
 
 # inspect the running container a bit
 docker run --interactive --tty --rm --publish 1234:1234 <that-id>
 
 # the filesystem as seen by the container process
-ps aux -w -w | grep root | grep /nc
+ps aux -w -w | grep /socat
 su -l
 cd /proc/<pid>
 ls -alF
@@ -139,24 +142,8 @@ ls -alF root/
 tree root/nix/
 
 # the mounted layers
-grep ' / ' mounts | cut -d ' ' -f 4 | cut -d , -f 3 | cut -d = -f 2 | tr : '\n' | while read layer; do echo; echo; echo $layer is a symlink:; ls -alF $layer; echo; echo inside the ${layer}/ symlink is:; ls -alF ${layer}/; done
+grep ' / ' mounts | cut -d ' ' -f 4 | cut -d , -f 3 | cut -d = -f 2 | tr : '\n' | while read layer; do echo; echo; echo $layer is a symlink:; ls -alF $layer; echo; echo inside the ${layer}/ symlink is:; tree ${layer}/; done
 
 
-# discuss Kaniko and Jenkins's constrained runtime environment
-# to motivate use of nix rather than Kaniko
-
-# show and discuss:
-# runtime/services/services-webapps/docker/image.nix
-
-
-# ECR image sizes and scan results
-# kaniko-built via Dockerfile
-open 10.22.0/apt-10.22.0.table | split row "\n" | split column --regex "[[:space:]]+" | get column0 | uniq | sort
-# nix-built:
-open 12.0.10/apt-12.0.10.table | split row "\n" | split column --regex "[[:space:]]+" | get column0 | uniq | sort
-
-# layers in a ctp nix-docker image
-./build-nix-service -s deep-ping -v versionless --image
-./create-image | docker load
+# max number of layers, if time:
 # https://github.com/docker/docs/issues/8230#issuecomment-475278273
-
