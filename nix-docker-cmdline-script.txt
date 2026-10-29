@@ -52,10 +52,24 @@ nsenter -t $(basename $(pwd)) --net ip route
 hostname
 nsenter -t $(basename $(pwd)) --uts hostname
 
+# show how it can be resource-limited
+cat cgroup
+head /sys/fs/cgroup/system.slice/docker-*.scope/pids.*
+
+docker run --interactive --tty --rm --publish 1234:1234 --pids-limit 3 $( docker build --quiet . )
+cd /proc/<pid>
+cat cgroup
+head /sys/fs/cgroup/system.slice/docker-*.scope/pids.*
+telnet 127.0.0.1 1234 # works
+telnet 127.0.0.1 1234 # works
+telnet 127.0.0.1 1234 # boom
+
 #
 # -- a deeper look into the container filesystem, and what an image is
 #
 
+docker run --interactive --tty --rm --publish 1234:1234 $( docker build --quiet . )
+cd /proc/<pid>
 grep ' / ' mounts
 # discuss overlay mounts
 docker image inspect $( docker build --quiet . )

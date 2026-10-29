@@ -11,4 +11,4 @@ COPY message-of-the-day.txt /
 
 # run with:
 # docker run --interactive --tty --rm --publish 1234:1234 <image id>
-ENTRYPOINT [ "/socat", "TCP-LISTEN:1234", "OPEN:/message-of-the-day.txt" ]
+ENTRYPOINT [ "/socat", "TCP-LISTEN:1234,fork", "OPEN:/message-of-the-day.txt,ignoreeof" ]

@@ -12,8 +12,8 @@ nixpkgs.dockerTools.buildLayeredImage {
   config = {
     Entrypoint = [
       "${socat}/bin/socat"
-      "TCP-LISTEN:1234"
-      "OPEN:${message-of-the-day}"
+      "TCP-LISTEN:1234,fork"
+      "OPEN:${message-of-the-day},ignoreeof"
     ];
   };
 }
